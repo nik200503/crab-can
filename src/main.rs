@@ -1,4 +1,5 @@
 use clap::{Parser,Subcommand};
+use std::process::Command;
 
 #[derive(Parser)]
 #[command(name = "crab-can")]
@@ -26,6 +27,17 @@ fn main() {
     match &cli.command{
     	Commands::Run{ cmd , args} => {
     		println!("Output : Preparing to run '{}' with args {:?}", cmd, args);
+    		
+    		let mut child = Command::new(cmd);
+    		child.args(args);
+    		
+    		let status = child.status().expect("failed to execute command");
+    		
+    		if status.success(){
+    			println!("Command finished successfully!");
+    		}else{
+    			println!("Command failed with exit code: {:?}",status.code());
+    		}
     	}
     }
 }
