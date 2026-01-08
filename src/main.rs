@@ -30,7 +30,9 @@ fn main() {
     	Commands::Run{ cmd , args} => {
     	
     		println!("Output: setting up container isolation...");
-    		unshare(CloneFlags::CLONE_NEWUTS).expect("failed to unshare UTS namespace (did you run with sudo?)");
+    		unshare(CloneFlags::CLONE_NEWUTS | CloneFlags::CLONE_NEWPID)
+    		.expect("failed to unshare UTS namespace (did you run with sudo?)");
+    		
     		sethostname("crab-containers").expect("failed to set hostname");
     		
     		
