@@ -1,7 +1,11 @@
 use clap::{Parser,Subcommand};
-use std::process::Command;
 use nix::sched::{unshare, CloneFlags};
-use nix::unistd::sethostname;
+use nix::unistd::{sethostname, execvp, fork, chroot, chdir, ForkResult};
+use nix::sys::wait::{waitpid, WaitStatus};
+use std::ffi::CString;
+use anyhow::Result;
+use std::path::Path;
+
 
 #[derive(Parser)]
 #[command(name = "crab-can")]
@@ -15,39 +19,48 @@ struct Cli{
 #[derive(Subcommand)]
 enum Commands{
 	Run{
-		#[arg(required = true)]
-		cmd:String,
+		#[arg(long)]
+		rootfs:String,
 		
-		#[arg(trailing_var_arg = true)]
-		args:Vec<String>,
+		#[arg(last = true, required = true)]
+		command: Vec<String>,
 	},
 }
 
-fn main() {
+fn main()-> Result<()> {
     let cli= Cli::parse();
     
     match &cli.command{
-    	Commands::Run{ cmd , args} => {
+    	Commands::Run{ rootfs , command} => {
     	
-    		println!("Output: setting up container isolation...");
-    		unshare(CloneFlags::CLONE_NEWUTS | CloneFlags::CLONE_NEWPID)
-    		.expect("failed to unshare UTS namespace (did you run with sudo?)");
+    		println!("(+) Unsharing Namespaces...");
+    		unshare(CloneFlags::CLONE_NEWUTS | CloneFlags::CLONE_NEWPID | CloneFlags::CLONE_NEWNS)?;
     		
-    		sethostname("crab-containers").expect("failed to set hostname");
-    		
-    		
-    		println!("Output : Preparing to run '{}' with args {:?}", cmd, args);
-    		
-    		let mut child = Command::new(cmd);
-    		child.args(args);
-    		
-    		let status = child.status().expect("failed to execute command");
-    		
-    		if status.success(){
-    			println!("Command finished successfully!");
-    		}else{
-    			println!("Command failed with exit code: {:?}",status.code());
+    		match unsafe {fork()}? {
+    			ForkResult::Parent{ child } => {
+    				println!("(+) Parent waiting fr child (PID: {})", child);
+    				waitpid(child, None)?;
+    			}
+    			ForkResult::Child => {
+    				println!("(+) Child setting up container...");
+    				
+    				let root_path = Path::new(&rootfs);
+    				println!("(+) Chrooting into : {}", rootfs);
+    				chdir(root_path)?;
+    				chroot(root_path)?;
+    				chdir("/")?;
+    				sethostname("crab-can")?;
+    				
+    				let c_command = CString::new(command[0].clone())?;
+    				let c_args: Vec<CString> = command
+    					.iter()
+    					.map(|arg| CString::new(arg.clone()).unwrap())
+    					.collect();
+    				
+    				execvp(&c_command, &c_args)?;
+    			}
     		}
     	}
     }
+    Ok(())
 }
