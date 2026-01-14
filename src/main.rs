@@ -5,6 +5,7 @@ use nix::sys::wait::{waitpid, WaitStatus};
 use std::ffi::CString;
 use anyhow::Result;
 use std::path::Path;
+use nix::mount::{mount, MsFlags};
 
 
 #[derive(Parser)]
@@ -50,6 +51,16 @@ fn main()-> Result<()> {
     				chroot(root_path)?;
     				chdir("/")?;
     				sethostname("crab-can")?;
+    				
+    				println!("(+) Mounting/ proc...");
+    				const NONE: Option<&'static [u8]> = None;
+    				mount(
+    					Some("proc"),
+    					"/proc",
+    					Some("proc"),
+    					MsFlags::MS_NOEXEC | MsFlags::MS_NOSUID | MsFlags::MS_NODEV,
+    					NONE
+    				)?;
     				
     				let c_command = CString::new(command[0].clone())?;
     				let c_args: Vec<CString> = command
